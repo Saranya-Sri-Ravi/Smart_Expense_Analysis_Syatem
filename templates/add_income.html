@@ -1,0 +1,32 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Add Monthly Income</title>
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Add Monthly Income</h2>
+
+<form method="POST">
+
+{% csrf_token %}
+{{ form.as_p }}
+
+<button type="submit">Add Income</button>
+
+</form>
+
+</div>
+
+</body>
+
+</html>

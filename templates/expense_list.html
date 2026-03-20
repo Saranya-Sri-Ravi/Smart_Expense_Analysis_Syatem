@@ -1,0 +1,29 @@
+{% load static %}
+
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+<h2>Your Expenses</h2>
+
+<table>
+
+<tr>
+<th>Date</th>
+<th>Category</th>
+<th>Amount</th>
+<th>Description</th>
+</tr>
+
+{% for expense in expenses %}
+
+<tr>
+<td>{{ expense.date }}</td>
+<td>{{ expense.category }}</td>
+<td>₹ {{ expense.amount }}</td>
+<td>{{ expense.description }}</td>
+</tr>
+
+{% endfor %}
+
+</table>
+
+<a href="{% url 'dashboard' %}">Back to Dashboard</a>
