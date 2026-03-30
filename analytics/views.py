@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # points to expense_tracker folder
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
@@ -37,6 +37,11 @@ def dashboard(request):
     total_expense = expenses.aggregate(Sum("amount"))["amount__sum"] or 0
     total_income = incomes.aggregate(Sum("amount"))["amount__sum"] or 0
     balance = total_income - total_expense
+
+    # 🔥 FIX: Convert Decimal → float
+    total_income = float(total_income)
+    total_expense = float(total_expense)
+    balance = float(balance)
 
     # =========================
     # CATEGORY CHART
@@ -71,12 +76,11 @@ def dashboard(request):
     recent_expenses = expenses.order_by("-date")[:5]
 
     # =========================
-    # 🤖 AI RECOMMENDATION (GROQ)
+    # 🤖 SMART AI RECOMMENDATION
     # =========================
 
     api_key = os.getenv("GROQ_API_KEY")
-
-    print("API KEY:", os.getenv("GROQ_API_KEY"))
+    print("API KEY:", api_key)
 
     if api_key:
         try:
@@ -84,16 +88,81 @@ def dashboard(request):
 
             client = Groq(api_key=api_key)
 
+            # 🧠 DATA PREPARATION
+
+            # Top category
+            if amounts:
+                max_index = amounts.index(max(amounts))
+                top_category = categories[max_index]
+                top_amount = amounts[max_index]
+            else:
+                top_category = "N/A"
+                top_amount = 0
+
+            # Trend detection
+            if len(monthly_totals) >= 2:
+                if monthly_totals[-1] > monthly_totals[-2]:
+                    trend = "increasing"
+                else:
+                    trend = "decreasing"
+            else:
+                trend = "stable"
+
+            # Rule-based insights
+            insights = []
+
+            if total_expense > total_income:
+                insights.append("Spending exceeds income")
+
+            if balance < 0:
+                insights.append("Negative balance")
+
+            if total_income > 0 and total_expense > 0.8 * total_income:
+                insights.append("Spending is close to income limit")
+
+            # Recent expenses data
+            recent_data = list(
+                recent_expenses.values("category__name", "amount", "date")
+            )
+
+            # 💡 PROMPT
             prompt = f"""
+You are an intelligent financial advisor.
 
-            All amounts are in Indian Rupees (₹).
-            
-            Monthly Income: {total_income}
-            Monthly Expense: {total_expense}
-            Balance: {balance}
+All amounts are in Indian Rupees (₹).
 
-            Give 3 short financial suggestions.
-            """
+Financial Summary:
+- Monthly Income: {total_income}
+- Monthly Expense: {total_expense}
+- Balance: {balance}
+
+Top Spending Category:
+- {top_category}: ₹{top_amount}
+
+Spending Trend:
+- {trend}
+
+Category Breakdown:
+{list(zip(categories, amounts))}
+
+Recent Expenses:
+{recent_data}
+
+System Insights:
+{insights}
+
+Task:
+Give exactly 3 personalized financial recommendations.
+
+Rules:
+- Must be based on the given data
+- Mention category names where relevant
+- Include a short reason
+- Keep each point concise (1–2 lines)
+- Avoid generic advice
+"""
+
+            print("Calling Groq API...")
 
             response = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
@@ -103,27 +172,27 @@ def dashboard(request):
             )
 
             raw_text = response.choices[0].message.content
+            print("RAW AI RESPONSE:", raw_text)
 
-            # Convert to list
-            points = raw_text.split("\n")
+            # 🧹 CLEAN OUTPUT
+            points = []
+            for p in raw_text.split("\n"):
+                p = p.replace("-", "").replace("*", "").strip()
+                if p:
+                    points.append(p)
 
-            # Remove empty lines
-            points = [p.strip() for p in points if p.strip()]
-
-            # Convert to HTML list
             formatted = "<ul>"
-
-            for p in points:
+            for p in points[:3]:
                 formatted += f"<li>{p}</li>"
-
             formatted += "</ul>"
 
             ai_recommendations = formatted
-            
 
         except Exception as e:
-            print("AI ERROR:", e)
-            ai_recommendations = "⚠ AI service unavailable"
+            import traceback
+            traceback.print_exc()
+            ai_recommendations = f"⚠ AI ERROR: {str(e)}"
+
     else:
         ai_recommendations = "⚠ API key not found"
 

@@ -102,24 +102,67 @@ def chatbot_api(request):
             })
 
         # =========================
-        # FINANCIAL ADVICE (FORMATTED)
+        # 🤖 SMART FINANCIAL ADVICE (ENHANCED PROMPT)
         # =========================
         if "advice" in msg:
             load_dotenv()
             api_key = os.getenv("GROQ_API_KEY")
 
+            if not api_key:
+                return Response({"reply": "⚠ API key not configured"})
+
             client = Groq(api_key=api_key)
+
+            # 🔥 Fetch real user data from MCP
+            data = mcp.get_all_data()
+            expenses = data.get("expenses", [])
+            incomes = data.get("incomes", [])
+
+            # Optional: limit data size for better response
+            expenses = expenses[:20]
 
             response = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[
                     {
                         "role": "system",
-                        "content": "Give 5 short financial tips as simple bullet points without numbering."
+                        "content": """
+You are a smart financial assistant for a personal expense tracking application.
+
+Your goal is to give personalized financial advice based on user's actual spending behavior.
+
+Rules:
+- All the amounts should be considered as Rupees (₹)
+- Give exactly 3 bullet points
+- Keep each point short (1 line)
+- Be specific and practical
+- Avoid generic advice like "save money"
+- Mention categories (food, travel, shopping, etc.) if possible
+- Focus on improving user's financial habits
+"""
                     },
                     {
                         "role": "user",
-                        "content": "Give financial advice"
+                        "content": f"""
+User Financial Data:
+
+Expenses:
+{expenses}
+
+Incomes:
+{incomes}
+
+Task:
+Analyze the data and provide 5 personalized financial recommendations.
+
+Focus on:
+- High spending categories
+- Frequent or repeated expenses
+- Opportunities to save money
+- Spending patterns and habits
+
+Make the advice specific to this user's data, not general tips.
+"""
                     }
                 ]
             )
@@ -138,7 +181,7 @@ def chatbot_api(request):
             return Response({
                 "reply": f"""
 <div class="card">
-<h4>💡 Financial Tips</h4>
+<h4>💡 Smart Financial Insights</h4>
 <ul>
 {formatted_tips}
 </ul>
