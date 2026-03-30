@@ -5,9 +5,10 @@ from django.db.models import Sum
 from .models import Income, Expense
 
 # 🔥 DRF IMPORTS
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 
 from .serializers import ExpenseSerializer, IncomeSerializer
 
@@ -53,10 +54,11 @@ def expense_list(request):
 
 
 # =========================
-# 🔥 API VIEWS
+# 🔐 API VIEWS (JWT SECURED)
 # =========================
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_expenses(request):
     expenses = Expense.objects.filter(user=request.user)
     serializer = ExpenseSerializer(expenses, many=True)
@@ -64,6 +66,7 @@ def get_expenses(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def create_expense(request):
     serializer = ExpenseSerializer(data=request.data)
 
@@ -75,6 +78,7 @@ def create_expense(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_income(request):
     income = Income.objects.filter(user=request.user)
     serializer = IncomeSerializer(income, many=True)
@@ -82,11 +86,13 @@ def get_income(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def create_income(request):
     serializer = IncomeSerializer(data=request.data)
 
     if serializer.is_valid():
         serializer.save(user=request.user)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    return Response(serializer.errors)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+

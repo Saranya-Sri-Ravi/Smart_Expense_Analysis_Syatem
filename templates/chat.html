@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Expense Chatbot</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #eef2f7;
+        }
+
+        .chat-container {
+            width: 420px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+
+        .header {
+            background: #4CAF50;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .chat-box {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .msg {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+
+        .user {
+            background: #2196F3;
+            color: white;
+            margin-left: auto;
+        }
+
+        .bot {
+            background: #f1f1f1;
+        }
+
+        .input-box {
+            display: flex;
+            border-top: 1px solid #ddd;
+        }
+
+        input {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            outline: none;
+        }
+
+        button.send {
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .menu button {
+            margin: 5px;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            background: #2196F3;
+            color: white;
+            cursor: pointer;
+        }
+
+        .card {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+        .card ul {
+            padding-left: 20px;
+        }
+
+        .card li {
+            margin-bottom: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="chat-container">
+
+    <div class="header">💬 Expense Bot</div>
+
+    <div id="chat-box" class="chat-box"></div>
+
+    <div class="input-box">
+        <input type="text" id="message" placeholder="Type message..." />
+        <button class="send" onclick="sendMessage()">Send</button>
+    </div>
+
+</div>
+
+<script>
+
+// ✅ Append message
+function appendMessage(content, type) {
+    let chatBox = document.getElementById("chat-box");
+
+    let msgDiv = document.createElement("div");
+    msgDiv.className = "msg " + type;
+    msgDiv.innerHTML = content || "⚠️ Empty response";
+
+    chatBox.appendChild(msgDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// ✅ Send message (button or enter)
+function sendMessage() {
+    let input = document.getElementById("message");
+    let message = input.value.trim();
+
+    if (!message) return;
+
+    appendMessage(message, "user");
+    input.value = "";
+
+    callAPI(message);
+}
+
+// ✅ Quick button clicks
+function sendQuickMessage(msg) {
+    appendMessage(msg, "user");
+    callAPI(msg);
+}
+
+// ✅ API call
+function callAPI(message) {
+
+    let token = localStorage.getItem("access_token");
+
+    if (!token) {
+        appendMessage("❌ Please login first", "bot");
+        return;
+    }
+
+    fetch("/chatbot/api/", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({ message: message })
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log("API Response:", data);
+
+        let reply = data.reply || JSON.stringify(data);
+        appendMessage(reply, "bot");
+    })
+    .catch(err => {
+        console.error(err);
+        appendMessage("❌ Server error", "bot");
+    });
+}
+
+// ✅ ENTER KEY SUPPORT
+document.getElementById("message").addEventListener("keydown", function(event) {
+
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+    }
+
+});
+
+</script>
+
+</body>
+</html>

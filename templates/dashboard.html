@@ -101,6 +101,13 @@
 
 <div class="navbar">
     <h2>Expense Tracker Dashboard</h2>
+
+    <form action="/accounts/logout/" method="POST" style="float:right; margin-top:-35px;">
+        {% csrf_token %}
+        <button type="submit" class="btn" onclick="clearJWT()">
+            Logout
+        </button>
+    </form>
 </div>
 
 <div class="dashboard">
@@ -131,10 +138,13 @@
         <button type="submit" class="btn">Apply</button>
     </form>
 
-    <!-- ✅ NAVIGATION BUTTONS -->
+    <!-- NAVIGATION -->
     <div style="margin: 15px;">
         <a href="/expense/add-income/" class="btn">+ Add Income</a>
         <a href="/expense/add-expense/" class="btn">+ Add Expense</a>
+
+        <!-- ✅ ONLY THIS BUTTON ADDED -->
+        <a href="/chatbot/ui/" class="btn">💬 Chatbot</a>
     </div>
 
     <!-- CARDS -->
@@ -157,7 +167,6 @@
 
     <!-- CHARTS -->
     <div class="charts">
-
         <div class="chart-box">
             <h3>Category Distribution</h3>
             <canvas id="pieChart"></canvas>
@@ -167,7 +176,6 @@
             <h3>Monthly Trend</h3>
             <canvas id="lineChart"></canvas>
         </div>
-
     </div>
 
     <!-- AI -->
@@ -203,37 +211,67 @@
 </div>
 
 <script>
-    const categories = {{ categories|safe }};
-    const amounts = {{ amounts|safe }};
-    const months = {{ months|safe }};
-    const totals = {{ monthly_totals|safe }};
+const categories = {{ categories|safe }};
+const amounts = {{ amounts|safe }};
+const months = {{ months|safe }};
+const totals = {{ monthly_totals|safe }};
 
-    if (categories.length > 0) {
-        new Chart(document.getElementById('pieChart'), {
-            type: 'pie',
-            data: {
-                labels: categories,
-                datasets: [{
-                    data: amounts
-                }]
-            }
-        });
-    }
+if (categories.length > 0) {
+    new Chart(document.getElementById('pieChart'), {
+        type: 'pie',
+        data: {
+            labels: categories,
+            datasets: [{ data: amounts }]
+        }
+    });
+}
 
-    if (months.length > 0) {
-        new Chart(document.getElementById('lineChart'), {
-            type: 'line',
-            data: {
-                labels: months,
-                datasets: [{
-                    label: 'Expenses',
-                    data: totals,
-                    borderWidth: 2,
-                    tension: 0.3
-                }]
-            }
-        });
-    }
+if (months.length > 0) {
+    new Chart(document.getElementById('lineChart'), {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Expenses',
+                data: totals,
+                borderWidth: 2,
+                tension: 0.3
+            }]
+        }
+    });
+}
+</script>
+
+<script>
+function testAPI() {
+
+    const token = localStorage.getItem("access_token");
+
+    fetch("/expense/api/expenses/", {
+        method: "GET",
+        headers: {
+            "Authorization": "Bearer " + token
+        }
+    })
+    .then(res => {
+        if (res.status === 401) {
+            alert("JWT missing or expired");
+        }
+        return res.json();
+    })
+    .then(data => {
+        console.log("API DATA:", data);
+    });
+}
+
+window.onload = testAPI;
+</script>
+
+<script>
+function clearJWT() {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+}
 </script>
 
 </body>
