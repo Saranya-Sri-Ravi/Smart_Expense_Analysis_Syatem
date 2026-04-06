@@ -7,11 +7,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 import os
+import re
 from dotenv import load_dotenv
 from groq import Groq
 
 from .mcp_client import MCPClient
-
 
 @login_required
 @ensure_csrf_cookie
@@ -22,6 +22,7 @@ def chat_ui(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def chatbot_api(request):
+
     try:
         message = request.data.get("message", "").strip()
 
@@ -31,7 +32,12 @@ def chatbot_api(request):
         auth = request.headers.get("Authorization")
 
         if not auth:
-            return Response({"reply": "❌ Authentication missing. Please login again."})
+            return Response({"reply": "❌ Authentication missing"})
+
+        # =========================
+        # SESSION MEMORY (LIGHT)
+        # =========================
+        last_month = request.session.get("last_month")
 
         mcp = MCPClient(
             base_url="http://localhost:8000/mcp",
@@ -41,7 +47,7 @@ def chatbot_api(request):
         msg = message.lower()
 
         # =========================
-        # MAIN MENU
+        # 🟢 MENU (ALWAYS SAFE UI)
         # =========================
         if msg in ["hi", "hello", "start", "menu"]:
             return Response({
@@ -56,28 +62,32 @@ def chatbot_api(request):
             })
 
         # =========================
-        # SHOW MONTHS
+        # 🟢 SHOW MONTH BUTTONS
         # =========================
-        if "details" in msg:
-            months_data = mcp.get_months()
-            months = months_data.get("months", [])
+        if any(word in msg for word in ["detail", "expense", "summary", "report"]):
 
-            if not months:
-                return Response({"reply": "No data available"})
+            months = mcp.get_months().get("months", [])
 
-            buttons = ""
-            for m in months:
-                buttons += f"<button onclick=\"sendQuickMessage('{m}')\">{m}</button>"
+            buttons = "".join([
+                f"<button onclick=\"sendQuickMessage('{m}')\">{m}</button>"
+                for m in months
+            ])
 
             return Response({
                 "reply": f"<p>Select a month:</p><div class='menu'>{buttons}</div>"
             })
 
         # =========================
-        # MONTH SUMMARY
+        # 🟢 MONTH SELECTED
         # =========================
-        if "-" in msg:
-            res = mcp.get_month_summary(msg)
+        month_match = re.search(r"\d{4}-\d{2}", msg)
+
+        if month_match:
+            month = month_match.group()
+
+            request.session["last_month"] = month  # ✅ store context
+
+            res = mcp.get_month_summary(month)
 
             return Response({
                 "reply": f"""
@@ -87,110 +97,133 @@ def chatbot_api(request):
 <p><b>Expense:</b> ₹{res.get('expense')}</p>
 <p><b>Balance:</b> ₹{res.get('balance')}</p>
 </div>
+
+<div class="menu">
+<button onclick="sendQuickMessage('details')">🔄 Change Month</button>
+<button onclick="sendQuickMessage('total spending')">💰 Total</button>
+<button onclick="sendQuickMessage('advice')">🤖 Advice</button>
+</div>
 """
             })
 
         # =========================
-        # TOTAL SPENDING
+        # 🟢 TOTAL SPENDING
         # =========================
-        if "total spending" in msg:
+        if "total" in msg:
+
             data = mcp.get_all_data()
-            total = sum(float(e["amount"]) for e in data.get("expenses", []))
+            expenses = data.get("expenses", [])
+
+            total = sum(float(e["amount"]) for e in expenses)
 
             return Response({
-                "reply": f"<div class='card'>💰 Total Spending: ₹{total}</div>"
+                "reply": f"""
+<div class="card">
+💰 <b>Total Spending:</b> ₹{total}
+</div>
+
+<div class="menu">
+<button onclick="sendQuickMessage('details')">📊 Monthly</button>
+</div>
+"""
             })
 
         # =========================
-        # 🤖 SMART FINANCIAL ADVICE (ENHANCED PROMPT)
+        # 🟢 CATEGORY ANALYSIS (REAL DATA ONLY)
+        # =========================
+        if "category" in msg or "highest" in msg:
+
+            data = mcp.get_all_data()
+            expenses = data.get("expenses", [])
+
+            if last_month:
+                expenses = [e for e in expenses if e["date"].startswith(last_month)]
+
+            category_totals = {}
+
+            for e in expenses:
+                cat = e.get("category_name", "Other")
+                category_totals[cat] = category_totals.get(cat, 0) + float(e["amount"])
+
+            if not category_totals:
+                return Response({"reply": "No data available"})
+
+            max_cat = max(category_totals, key=category_totals.get)
+            max_amt = category_totals[max_cat]
+
+            return Response({
+                "reply": f"""
+<div class="card">
+<b>Top Category:</b> {max_cat}<br>
+<b>Amount:</b> ₹{max_amt}<br>
+<b>Month:</b> {last_month if last_month else "All Time"}
+</div>
+"""
+            })
+
+        # =========================
+        # 🤖 AI (STRICT MODE - NO FAKE DATA)
         # =========================
         if "advice" in msg:
+
+            data = mcp.get_all_data()
+
+            expenses = data.get("expenses", [])[:20]
+            incomes = data.get("incomes", [])
+
             load_dotenv()
             api_key = os.getenv("GROQ_API_KEY")
 
-            if not api_key:
-                return Response({"reply": "⚠ API key not configured"})
-
             client = Groq(api_key=api_key)
 
-            # 🔥 Fetch real user data from MCP
-            data = mcp.get_all_data()
-            expenses = data.get("expenses", [])
-            incomes = data.get("incomes", [])
+            prompt = f"""
+You are a financial assistant.
 
-            # Optional: limit data size for better response
-            expenses = expenses[:20]
-
-            response = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """
-You are a smart financial assistant for a personal expense tracking application.
-
-Your goal is to give personalized financial advice based on user's actual spending behavior.
-
-Rules:
-- All the amounts should be considered as Rupees (₹)
-- Give exactly 3 bullet points
-- Keep each point short (1 line)
-- Be specific and practical
-- Avoid generic advice like "save money"
-- Mention categories (food, travel, shopping, etc.) if possible
-- Focus on improving user's financial habits
-"""
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
-User Financial Data:
+STRICT RULES:
+- Use ONLY given data
+- Do NOT create new numbers
+- Give 3 short insights
 
 Expenses:
 {expenses}
 
 Incomes:
 {incomes}
-
-Task:
-Analyze the data and provide 5 personalized financial recommendations.
-
-Focus on:
-- High spending categories
-- Frequent or repeated expenses
-- Opportunities to save money
-- Spending patterns and habits
-
-Make the advice specific to this user's data, not general tips.
 """
-                    }
-                ]
+
+            response = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}]
             )
 
-            advice_text = response.choices[0].message.content
+            text = response.choices[0].message.content
 
-            # Convert to HTML bullet list
-            tips = advice_text.split("\n")
-
-            formatted_tips = ""
-            for tip in tips:
-                tip = tip.strip().replace("*", "").replace("-", "")
-                if tip:
-                    formatted_tips += f"<li>{tip}</li>"
+            tips = ""
+            for line in text.split("\n"):
+                if line.strip():
+                    tips += f"<li>{line}</li>"
 
             return Response({
                 "reply": f"""
 <div class="card">
-<h4>💡 Smart Financial Insights</h4>
-<ul>
-{formatted_tips}
-</ul>
+<h4>💡 Advice</h4>
+<ul>{tips}</ul>
 </div>
 """
             })
 
-        return Response({"reply": "Type 'hi' to start"})
+        # =========================
+        # DEFAULT
+        # =========================
+        return Response({
+            "reply": """
+<p>I didn't understand.</p>
+<div class="menu">
+<button onclick="sendQuickMessage('details')">📊 Monthly Details</button>
+</div>
+"""
+        })
 
     except Exception as e:
         print("ERROR:", str(e))
-        return Response({"reply": "❌ Server error occurred"})
+        return Response({"reply": "❌ Server error"})
